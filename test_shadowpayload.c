@@ -1,5 +1,12 @@
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <sys/types.h>
+#include <unistd.h>
 #include <sys/socket.h>
 #include <linux/netlink.h>
+
+#define NETLINK_USER 31
 
 #define MAX_PAYLOAD 1024
 struct sockaddr_nl src_addr, dest_addr;
@@ -8,7 +15,7 @@ struct iovec iov;
 int sock_fd;
 struct msghdr msg;
 
-void main()
+int main()
 {
 	sock_fd = socket(PF_NETLINK, SOCK_RAW, NETLINK_USER);
 	if (sock_fd < 0)
@@ -32,7 +39,7 @@ void main()
 	nlh->nlmsg_pid = getpid();
 	nlh->nlmsg_flags = 0;
 
-	strcpy(NLMSG_DATA(nlh), "Hello");
+	strcpy(NLMSG_DATA(nlh), "create_target\0test_target");
 
 	iov.iov_base = (void *)nlh;
 	iov.iov_len = nlh->nlmsg_len;

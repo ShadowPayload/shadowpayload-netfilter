@@ -19,30 +19,13 @@ struct sk_buff *new_success_msg(void) {
 	struct nlmsghdr *nlh;
 
 	skb_out = nlmsg_new(0, 0);
-	if (!skb_out) {
+	if (skb_out) {
+		nlh = nlmsg_put(skb_out, 0, 0, NLMSG_DONE, 0, 0);
+		NETLINK_CB(skb_out).dst_group = 0;
+	} else {
 		printk(KERN_ERR "Failed to allocate new skb\n");
-		return NULL;
 	}
 
-	nlh = nlmsg_put(skb_out, 0, 0, NLMSG_DONE, 0, 0);
-	NETLINK_CB(skb_out).dst_group = 0;
-	return skb_out;
-}
-
-struct sk_buff *dummy(void) {
-	struct sk_buff *skb_out;
-	struct nlmsghdr *nlh;
-	const int msg_size = strlen(msg);
-
-	skb_out = nlmsg_new(msg_size, 0);
-	if (!skb_out) {
-		printk(KERN_ERR "Failed to allocate new skb\n");
-		return NULL;
-	}
-
-	nlh = nlmsg_put(skb_out, 0, 0, NLMSG_DONE, msg_size, 0);
-	NETLINK_CB(skb_out).dst_group = 0;
-	strncpy(nlmsg_data(nlh), msg, msg_size);
 	return skb_out;
 }
 
@@ -78,20 +61,28 @@ static void shadowpayload_nl_recv_msg(struct sk_buff *skb)
 {
 	struct nlmsghdr *nlh;
 	struct sk_buff *skb_out;
+	int supported_commands = sizeof(commands) / sizeof(struct command);
 	int res, i;
 
 	nlh = (struct nlmsghdr *)skb->data;
-	for (i = 0; i < sizeof(commands); i++) {
+	for (i = 0; i < supported_commands; i++) {
 		char *cmd = (char *)nlmsg_data(nlh);
-		if ( strcmp(commands[i].name, cmd) == 0 ) {
+		if (strcmp(commands[i].name, cmd) == 0) {
 			skb_out = commands[i].executor(nlmsg_data(nlh) + strlen(cmd) + 1);
 			break;
 		}
 	}
 
-	res = nlmsg_unicast(nl_sk, skb_out, nlh->nlmsg_pid);
-	if (res < 0)
-		printk(KERN_ERR "Error while sending back to user\n");
+	if (i >= supported_commands) {
+		printk(KERN_ERR "shadowpayload: Unrecognized commands\n");
+		return;
+	}
+
+	if (skb_out) {
+		res = nlmsg_unicast(nl_sk, skb_out, nlh->nlmsg_pid);
+		if (res < 0)
+			printk(KERN_ERR "shadowpayload: Error while sending back to user\n");
+	}
 }
 
 static int __init shadowpayload_init(void)
@@ -102,7 +93,7 @@ static int __init shadowpayload_init(void)
 
 	nl_sk = netlink_kernel_create(&init_net, NETLINK_USER, &cfg);
 	if (!nl_sk) {
-		printk(KERN_ALERT "Error creating socket.\n");
+		printk(KERN_ALERT "shadowpayload: Error creating socket.\n");
 		return -10;
 	}
 
