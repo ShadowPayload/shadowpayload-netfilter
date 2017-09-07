@@ -1,9 +1,7 @@
 #include <sys/socket.h>
 #include <linux/netlink.h>
 
-#define NETLINK_USER 31
-
-#define MAX_PAYLOAD 1024 /* maximum payload size*/
+#define MAX_PAYLOAD 1024
 struct sockaddr_nl src_addr, dest_addr;
 struct nlmsghdr *nlh = NULL;
 struct iovec iov;
