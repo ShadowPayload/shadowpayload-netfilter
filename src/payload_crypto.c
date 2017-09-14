@@ -12,23 +12,23 @@
 
 #include "payload_crypto.h"
 
-static struct ipv6_transport_info {
+static struct transport_info {
 	u8 protocol;
 	unsigned int offset;
 };
 
-static inline struct ipv6_transport_info ipv6_move_to_transport(struct ipv6hdr *header) {
+static inline struct transport_info move_to_transport(struct iphdr *header4, struct ipv6hdr *header6) {
 	//TODO
 	while(ipv6_ext_hdr(header->nexthdr)) {
 
 	}
-	return struct ipv6_transport_info {
+	return struct transport_info {
 		.protocol = ;
 		.offset = ;
 	};
 }
 
-static inline bool check_l4_protocol(struct iphdr *l3_ip4_header, struct ipv6hdr *l3_ip6_header, bool direction, u8 protocol) {
+static inline bool check_l4_protocol(struct iphdr *l3_ip4_header, struct ipv6hdr *l3_ip6_header, crypto_option opt) {
 	/* The transport layer does not has to be raw in order to encrypt ip payload */
 	if (ENCRYPT == direction && IPPROTO_RAW == protocol)
 		return true;
@@ -39,7 +39,8 @@ static inline bool check_l4_protocol(struct iphdr *l3_ip4_header, struct ipv6hdr
 	}
 }
 
-int transform_skb(sk_buff *skb, const struct crypt_info *ti, bool direction, u8 protocol) {
+int transform_skb(sk_buff *skb, const struct crypto_info *ci, crypto_option opt) {
+	u8 l4_protocol;
 	/* beginning and end of encryption/decryption */
 	unsigned char *payload = NULL;
 	unsigned char *tail = skb->tail;
@@ -62,17 +63,13 @@ int transform_skb(sk_buff *skb, const struct crypt_info *ti, bool direction, u8 
 		l3_ip4_header = NULL;
 
 	/* validate layer 4 protocol */
-	check_l4_protocol(l3_ip4_header, l3_ip6_header, direction, protocol);
+	check_l4_protocol(l3_ip4_header, l3_ip6_header, opt);
 
 	/* get layer 4 header and payload pointer */
-	if (!skb_transport_header_was_set(skb)) {
-		//FIXME: instead of reporting an error, we can actually set the transport header
-		printk(KERN_ERR "shadowpayload: set transport header first\n");
-		return -EINVAL;
-	}
+	struct transport_info ti = move_to_transport(l3_ip4_header, l3_ip6_header);
 	switch (protocol) {
 	case IPPROTO_RAW:
-		payload = skb_transport_header(skb);
+		payload = ;
 		break;
 	case IPPROTO_TCP:
 		l4_tcp_header = (struct tcphdr *)skb_transport_header(skb);
