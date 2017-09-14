@@ -1,10 +1,15 @@
 #ifndef _PAYLOAD_CRYPTO_H
 #define _PAYLOAD_CRYPTO_H
 
-#define ENCRYPT true
-#define DECRYPT false
+enum {
+	ENCRYPT_NETWORK,
+	ENCRYPT_TRANSPORT,
+	ENCRYPT_MAXIMUM,
+	DECRYPT_NETWORK,
+	DECRYPT_TRANSPORT
+} crypto_option;
 
-struct crypt_info {
+struct crypto_info {
 };
 
 #endif
