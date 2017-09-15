@@ -30,14 +30,33 @@ static inline struct transport_info move_to_transport(struct iphdr *header4, str
 	}
 
 	if (header6) {
-		//TODO
-		while(ipv6_ext_hdr(header->nexthdr)) {
+		bool is_fragment = false;
+		u8 nexthdr = header6->nexthdr;
+		u8 *header = (u8 *)header6 + sizeof(struct ipv6hdr);
 
+		while(ipv6_ext_hdr(nexthdr) && nexthdr != NEXTHDR_AUTH && nexthdr != NEXTHDR_NONE) {
+			struct ipv6_opt_hdr *hp = (struct ipv6_opt_hdr *) header;
+			int hdrlen;  /* header length in octets */
+
+			switch(nexthdr) {
+			case NEXTHDR_HOP:
+			case NEXTHDR_DEST:
+			case NEXTHDR_ROUTING:
+				hdrlen = ipv6_optlen(hp);
+				break;
+			case NEXTHDR_FRAGMENT:
+				is_fragment = true;
+				hdrlen = 8;
+				break;
+			}
+
+			nexthdr = hp->nexthdr
+			header += hdrlen / 2;
 		}
 		return struct transport_info {
-			.is_fragment = ,
-			.protocol = ,
-			.transport_header = ,
+			.is_fragment = is_fragment,
+			.protocol = nexthdr,
+			.transport_header = header,
 		};
 	}
 
