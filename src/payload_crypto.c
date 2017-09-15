@@ -18,7 +18,7 @@ static struct transport_info {
 	unsigned char *transport_header;
 };
 
-static inline struct transport_info move_to_transport(struct iphdr *header4, struct ipv6hdr *header6) {
+static struct transport_info move_to_transport(struct iphdr *header4, struct ipv6hdr *header6) {
 	if (header4) {
 		u8 protocol = header4->protocol;
 		if (header6) BUG();
@@ -34,7 +34,16 @@ static inline struct transport_info move_to_transport(struct iphdr *header4, str
 		u8 nexthdr = header6->nexthdr;
 		u8 *header = (u8 *)header6 + sizeof(struct ipv6hdr);
 
-		while(ipv6_ext_hdr(nexthdr) && nexthdr != NEXTHDR_AUTH && nexthdr != NEXTHDR_NONE) {
+		while(ipv6_ext_hdr(nexthdr)) {
+			if (NEXTHDR_AUTH == nexthdr) {
+				printk(KERN_ERR "shadowpayload: can not encrypt/decrypt authenticated data.");
+				break;
+			}
+			if (NEXTHDR_NONE == nexthdr) {
+				printk(KERN_ERR "shadowpayload: no-next-header encountered.");
+				break;
+			}
+
 			struct ipv6_opt_hdr *hp = (struct ipv6_opt_hdr *) header;
 			int hdrlen;  /* header length in octets */
 
