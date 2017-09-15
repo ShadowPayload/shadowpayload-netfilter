@@ -13,16 +13,19 @@
 #include "payload_crypto.h"
 
 static struct transport_info {
+	bool is_fragment;
 	u8 protocol;
 	unsigned char *transport_header;
 };
 
 static inline struct transport_info move_to_transport(struct iphdr *header4, struct ipv6hdr *header6) {
 	if (header4) {
+		u8 protocol = header4->protocol;
 		if (header6) BUG();
 		return struct transport_info {
-			.protocol = header4->protocol,
-			.transport_header = (unsigned char *)header4 + header4->ihl * 4;
+			.is_fragment = ip_is_fragment(header4),
+			.protocol = protocol,
+			.transport_header = (unsigned char *)header4 + header4->ihl * 4,
 		};
 	}
 
@@ -32,8 +35,9 @@ static inline struct transport_info move_to_transport(struct iphdr *header4, str
 
 		}
 		return struct transport_info {
-			.protocol = ;
-			.transport_header = ;
+			.is_fragment = ,
+			.protocol = ,
+			.transport_header = ,
 		};
 	}
 
@@ -41,10 +45,19 @@ static inline struct transport_info move_to_transport(struct iphdr *header4, str
 }
 
 static inline bool check_l4_protocol(const struct transport_info *ti, crypto_option opt) {
-	if (DECRYPT_NETWORK == opt)
-		return IPPROTO_RAW == ti->protocol;
-	if (ENCRYPT_TRANSPORT == opt)
-		return IPPROTO_RAW != ti->protocol;
+	if (DECRYPT_NETWORK == opt && IPPROTO_RAW != ti->protocol) {
+		printk(KERN_ERR "shadowpayload: protocol must be raw in order to decrypt network layer payload.");
+		return false;
+	}
+	if ((ENCRYPT_TRANSPORT == opt || DECRYPT_TRANSPORT == opt) && IPPROTO_RAW == ti->protocol) {
+		printk(KERN_ERR "shadowpayload: raw data does not have a transport layer.");
+		return false;
+	}
+	if (ti->is_fragment && IPPROTO_RAW != ti->protocol) {
+		printk(KERN_ERR "shadowpayload: transport layer encryption/decryption does not support fragmented packet.");
+		return false;
+	}
+	return true;
 }
 
 int transform_skb(sk_buff *skb, const struct crypto_info *ci, crypto_option opt) {
@@ -71,10 +84,8 @@ int transform_skb(sk_buff *skb, const struct crypto_info *ci, crypto_option opt)
 
 	/* get layer 4 header and payload pointer */
 	struct transport_info ti = move_to_transport(l3_ip4_header, l3_ip6_header);
-	if (!check_l4_protocol(&ti, opt)) {
-		printk(KERN_ERR "shadowpayload: invalid transport layer protocol");
+	if (!check_l4_protocol(&ti, opt))
 		return -EINVAL;
-	}
 	switch (ti.protocol) {
 	case IPPROTO_RAW:
 		payload = ti.transport_header;
@@ -106,6 +117,7 @@ int transform_skb(sk_buff *skb, const struct crypto_info *ci, crypto_option opt)
 	/* encrypt/decrypt payload */
 
 	/* repair headers */
+	// disallow fragmentation
 	switch(protocol) {
 	case IPPROTO_RAW:
 		break;
