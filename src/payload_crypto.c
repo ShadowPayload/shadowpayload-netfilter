@@ -10,7 +10,80 @@
 #include <include/net/gre.h>
 #include <include/net/ipv6.h>
 
-#include "payload_crypto.h"
+#include "shadowpayload.h"
+
+#define IP46_DISPATCH(func_name)												\
+bool func_name(const crypto_option *opt, sk_buff *skb) {						\
+	struct iphdr *ip4_header = (struct iphdr *)skb_network_header(skb);			\
+	switch (ip4_header->version) {												\
+	case 4:																		\
+		return ipv4_##func_name(opt, skb);										\
+	case 6:																		\
+		return ipv6_##func_name(opt, skb);										\
+	default:																	\
+		printk(KERN_ERR "shadowpayload: unknown protocol.");					\
+		return false;															\
+	}																			\
+}
+
+static inline u16 encrypt_with_ip_protocol(const crypto_option *opt, sk_buff *skb, u8 *payload, u8 *protocol) {
+	/* suspend original protocol to the payload */
+	*skb_put(skb, 1) = *protocol;
+	*protocol = IPPROTO_RAW;
+	/* encrypt payload */
+	return ;
+}
+
+static inline void ipv4_encrypt_ip(const crypto_option *opt, sk_buff *skb) {
+	struct iphdr *ip4hdr = (struct iphdr *)skb_network_header(skb);
+	u8 *payload = (u8 *)ip4hdr + ip4hdr->ihl * 4;
+	u16 len_increase = encrypt_with_ip_protocol(opt, skb, payload, &ip4hdr->protocol);
+	/* repair headers */
+	ip4hdr->tot_len = htons(ntohs(ip4hdr->tot_len) + len_increase);
+	ip4hdr->check = 0;
+	ip4hdr->check = ;
+}
+
+IP46_DISPATCH(encrypt_ip)
+EXPORT_SYMBOL_GPL(encrypt_ip);
+
+static inline u16 decrypt_with_ip_protocol(const crypto_option *opt, sk_buff *skb, u8 *payload, u8 *protocol) {
+	if (IPPROTO_RAW != *protocol) {
+		printk(KERN_ERR "shadowpayload: protocol must be raw in order to decrypt ip payload.");
+		return 0;
+	}
+	/* decrypt payload */
+	//TODO: decrypt and replace
+	/* recover original protocol */
+	*protocol = *(skb->tail - 1);
+	skb_trim(skb, 1);
+	return ;
+}
+
+static inline void ipv4_decrypt_ip(const crypto_option *opt, sk_buff *skb) {
+	struct iphdr *ip4hdr = (struct iphdr *)skb_network_header(skb);
+	u8 *payload = (u8 *)ip4hdr + ip4hdr->ihl * 4;
+	u16 len_decrease = decrypt_with_ip_protocol(opt, skb, payload, &ip4hdr->protocol);
+	/* repair headers */
+	ip4hdr->tot_len = htons(ntohs(ip4hdr->tot_len) - len_decrease);
+	ip4hdr->check = 0;
+	ip4hdr->check = ;
+}
+
+IP46_DISPATCH(decrypt_ip)
+EXPORT_SYMBOL_GPL(decrypt_ip);
+
+void encrypt_transport(const crypto_option *opt, sk_buff *skb) {
+	return
+}
+
+EXPORT_SYMBOL_GPL(encrypt_transport);
+
+void decrypt_transport(const crypto_option *opt, sk_buff *skb) {
+	return
+}
+
+EXPORT_SYMBOL_GPL(decrypt_transport);
 
 static struct transport_info {
 	bool is_fragment;
@@ -74,8 +147,7 @@ static struct transport_info move_to_transport(struct iphdr *header4, struct ipv
 
 static inline bool check_l4_protocol(const struct transport_info *ti, crypto_option opt) {
 	if (DECRYPT_NETWORK == opt && IPPROTO_RAW != ti->protocol) {
-		printk(KERN_ERR "shadowpayload: protocol must be raw in order to decrypt network layer payload.");
-		return false;
+
 	}
 	if ((ENCRYPT_TRANSPORT == opt || DECRYPT_TRANSPORT == opt) && IPPROTO_RAW == ti->protocol) {
 		printk(KERN_ERR "shadowpayload: raw data does not have a transport layer.");
@@ -93,7 +165,7 @@ int transform_skb(sk_buff *skb, const struct crypto_info *ci, crypto_option opt)
 	unsigned char *payload = NULL;
 	unsigned char *tail = skb->tail;
 	/* layer 3 headers */
-	struct iphdr   *l3_ip4_header = NULL;
+
 	struct ipv6hdr *l3_ip6_header = NULL;
 	/* layer 4 headers */
 	struct tcphdr       *l4_tcp_header = NULL;
@@ -103,12 +175,7 @@ int transform_skb(sk_buff *skb, const struct crypto_info *ci, crypto_option opt)
 	struct gre_full_hdr *l4_gre_header = NULL;
 
 	/* get layer 3 header */
-	l3_ip4_header = (struct iphdr   *)skb_network_header(skb);
-	l3_ip6_header = (struct ipv6hdr *)skb_network_header(skb);
-	if (4 == l3_ip4_header->version)
-		l3_ip6_header = NULL;
-	else
-		l3_ip4_header = NULL;
+
 
 	/* get layer 4 header and payload pointer */
 	struct transport_info ti = move_to_transport(l3_ip4_header, l3_ip6_header);
