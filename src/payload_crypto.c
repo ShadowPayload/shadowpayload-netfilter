@@ -10,7 +10,13 @@
 #include <include/net/gre.h>
 #include <include/net/ipv6.h>
 
-#include "payload_crypto.h"
+#include "shadowpayload.h"
+
+#define error(a,b,c)                                  \
+	if (a) {                                          \
+		printk(KERN_ERR "shadowpayload: %s.\n", (b)); \
+		c;                                            \
+	}                                                 \
 
 static struct transport_info {
 	bool is_fragment;
@@ -35,14 +41,8 @@ static struct transport_info move_to_transport(struct iphdr *header4, struct ipv
 		u8 *header = (u8 *)header6 + sizeof(struct ipv6hdr);
 
 		while(ipv6_ext_hdr(nexthdr)) {
-			if (NEXTHDR_AUTH == nexthdr) {
-				printk(KERN_ERR "shadowpayload: can not encrypt/decrypt authenticated data.");
-				break;
-			}
-			if (NEXTHDR_NONE == nexthdr) {
-				printk(KERN_ERR "shadowpayload: no-next-header encountered.");
-				break;
-			}
+			error(NEXTHDR_AUTH == nexthdr, "can not encrypt/decrypt authenticated data", break);
+			error(NEXTHDR_NONE == nexthdr, "no-next-header encountered", break);
 
 			struct ipv6_opt_hdr *hp = (struct ipv6_opt_hdr *) header;
 			int hdrlen;  /* header length in octets */
@@ -72,23 +72,39 @@ static struct transport_info move_to_transport(struct iphdr *header4, struct ipv
 	BUG();
 }
 
-static inline bool check_l4_protocol(const struct transport_info *ti, crypto_option opt) {
-	if (DECRYPT_NETWORK == opt && IPPROTO_RAW != ti->protocol) {
-		printk(KERN_ERR "shadowpayload: protocol must be raw in order to decrypt network layer payload.");
-		return false;
+static inline bool validate(const struct transport_info *ti, const struct crypto_options *opt) {
+	error(ti->is_fragment, "unable to operate on fragmented data", return false);
+	if (opt->is_encrypt) {
+		if (NETWORK == opt->layer) {
+
+		} else
+
+	} else {
+
 	}
-	if ((ENCRYPT_TRANSPORT == opt || DECRYPT_TRANSPORT == opt) && IPPROTO_RAW == ti->protocol) {
+	assert(NETWORK == opt->layer &&  && opt->, "")
+	if (opt->modify_protocol || opt->insert_fake_header) {
+		assert(TRANSPORT == opt->layer && IPPROTO_GRE != ti->protocol,
+			"only available on network layer encryption or GRE tunnel",
+			return false);
+
+	} else {
+
+	}
+
+	assert()
+	if (TRANSPORT == opt->layer && IPPROTO_RAW == ti->protocol) {
 		printk(KERN_ERR "shadowpayload: raw data does not have a transport layer.");
 		return false;
 	}
-	if (ti->is_fragment && IPPROTO_RAW != ti->protocol) {
-		printk(KERN_ERR "shadowpayload: transport layer encryption/decryption does not support fragmented packet.");
+	if (DECRYPT_NETWORK == opt-> && IPPROTO_RAW != ti->protocol) {
+		printk(KERN_ERR "shadowpayload: protocol must be raw in order to decrypt network layer payload.");
 		return false;
 	}
 	return true;
 }
 
-int transform_skb(sk_buff *skb, const struct crypto_info *ci, crypto_option opt) {
+int transform_skb(sk_buff *skb, const struct crypto_info *opt) {
 	/* beginning and end of encryption/decryption */
 	unsigned char *payload = NULL;
 	unsigned char *tail = skb->tail;
@@ -100,7 +116,7 @@ int transform_skb(sk_buff *skb, const struct crypto_info *ci, crypto_option opt)
 	struct udphdr       *l4_udp_header = NULL;
 	struct iphdr        *l4_ip4_header = NULL;
 	struct ipv6hdr      *l4_ip6_header = NULL;
-	struct gre_full_hdr *l4_gre_header = NULL;
+	struct gre_base_hdr *l4_gre_header = NULL;
 
 	/* get layer 3 header */
 	l3_ip4_header = (struct iphdr   *)skb_network_header(skb);
@@ -112,12 +128,12 @@ int transform_skb(sk_buff *skb, const struct crypto_info *ci, crypto_option opt)
 
 	/* get layer 4 header and payload pointer */
 	struct transport_info ti = move_to_transport(l3_ip4_header, l3_ip6_header);
-	if (!check_l4_protocol(&ti, opt))
+	if (opt->is_network) {
+		payload = (unsigned char *)ti.transport_header;
+	}
+	if (!validate(&ti, opt))
 		return -EINVAL;
 	switch (ti.protocol) {
-	case IPPROTO_RAW:
-		payload = ti.transport_header;
-		break;
 	case IPPROTO_TCP:
 		l4_tcp_header = (struct tcphdr *)ti.transport_header;
 		payload = (unsigned char *)l4_tcp_header + l4_tcp_header->doff * 4;
@@ -135,17 +151,17 @@ int transform_skb(sk_buff *skb, const struct crypto_info *ci, crypto_option opt)
 		payload = move_to_transport(NULL, l4_ip6_header).transport_header;
 		break;
 	case IPPROTO_GRE:
-		l4_gre_header = (struct gre_full_hdr *)ti.transport_header;
+		l4_gre_header = (struct gre_base_hdr *)ti.transport_header; //pptp_gre_header
 		payload = NULL; //TODO
 		break;
 	default:
+		printk(KERN_ERR "shadowpayload: unsupported protocol.");
 		return -ENOTSUPP;
 	}
 
 	/* encrypt/decrypt payload */
 
 	/* repair headers */
-	// disallow fragmentation
 	switch(protocol) {
 	case IPPROTO_RAW:
 		break;
@@ -162,3 +178,5 @@ int transform_skb(sk_buff *skb, const struct crypto_info *ci, crypto_option opt)
 	}
 	return 0;
 }
+
+EXPORT_SYMBOL_GPL(transform_skb);
