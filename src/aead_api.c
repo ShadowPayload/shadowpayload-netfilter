@@ -4,7 +4,7 @@
 #include <crypto/aead.h>
 
 int aead_encrypt(struct crypto_aead *tfm, u8 *b_0, u8 *aad, size_t aad_len,
-				 u8 *data, size_t data_len, u8 *tag, size_t tag_len)
+				 u8 *data, size_t data_len, u8 *auth)
 {
 	struct scatterlist sg[3];
 	struct aead_request *aead_req;
@@ -21,7 +21,7 @@ int aead_encrypt(struct crypto_aead *tfm, u8 *b_0, u8 *aad, size_t aad_len,
 	sg_init_table(sg, 3);
 	sg_set_buf(&sg[0], &__aad[2], be16_to_cpup((__be16 *)__aad));
 	sg_set_buf(&sg[1], data, data_len);
-	sg_set_buf(&sg[2], tag, tag_len);
+	sg_set_buf(&sg[2], auth, tfm->authsize);
 
 	aead_request_set_tfm(aead_req, tfm);
 	aead_request_set_crypt(aead_req, sg, sg, data_len, b_0);
@@ -34,7 +34,7 @@ int aead_encrypt(struct crypto_aead *tfm, u8 *b_0, u8 *aad, size_t aad_len,
 }
 
 int aead_decrypt(struct crypto_aead *tfm, u8 *b_0, u8 *aad, size_t aad_len,
-				 u8 *data, size_t data_len, u8 *tag, size_t tag_len)
+				 u8 *data, size_t data_len, u8 *auth)
 {
 	struct scatterlist sg[3];
 	struct aead_request *aead_req;
@@ -55,10 +55,10 @@ int aead_decrypt(struct crypto_aead *tfm, u8 *b_0, u8 *aad, size_t aad_len,
 	sg_init_table(sg, 3);
 	sg_set_buf(&sg[0], &__aad[2], be16_to_cpup((__be16 *)__aad));
 	sg_set_buf(&sg[1], data, data_len);
-	sg_set_buf(&sg[2], tag, tag_len);
+	sg_set_buf(&sg[2], auth, tfm->authsize);
 
 	aead_request_set_tfm(aead_req, tfm);
-	aead_request_set_crypt(aead_req, sg, sg, data_len + tag_len, b_0);
+	aead_request_set_crypt(aead_req, sg, sg, data_len + tfm->authsize, b_0);
 	aead_request_set_ad(aead_req, sg[0].length);
 
 	err = crypto_aead_decrypt(aead_req);
@@ -70,7 +70,7 @@ int aead_decrypt(struct crypto_aead *tfm, u8 *b_0, u8 *aad, size_t aad_len,
 struct crypto_aead *aead_key_setup_encrypt(const char *alg
 										   const u8 key[],
 										   size_t key_len,
-										   size_t tag_len)
+										   size_t authsize)
 {
 	struct crypto_aead *tfm;
 	int err;
@@ -82,7 +82,7 @@ struct crypto_aead *aead_key_setup_encrypt(const char *alg
 	err = crypto_aead_setkey(tfm, key, key_len);
 	if (err)
 		goto free_aead;
-	err = crypto_aead_setauthsize(tfm, tag_len);
+	err = crypto_aead_setauthsize(tfm, authsize);
 	if (err)
 		goto free_aead;
 
